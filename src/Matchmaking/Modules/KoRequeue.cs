@@ -206,7 +206,7 @@ namespace SS.Matchmaking.Modules
             // allowRequeue: true respects the player's auto-requeue preference:
             //   - if auto-requeue is on  → they are placed back in queue automatically
             //   - if auto-requeue is off → PreviousQueued is cleared; they must type ?next
-            _playManager!.UnsetPlayingByName(playerName, allowRequeue: true);
+            _playManager!.UnsetPlaying(playerName, allowRequeuing: true, UnsetPlayingReason.EarlyRequeue);
 
             // Mark this in the old match's participation record so EndMatch skips them.
             _koEarlyRequeue!.MarkPlayerKoEarlyRequeued(matchData, playerName);

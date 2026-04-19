@@ -273,7 +273,7 @@ namespace SS.Matchmaking.Modules
                             }
 
                             QueueMatchCompletionCheck(boxState.MatchIdentifier);
-                            _playManager.UnsetPlaying(player, false);
+                            _playManager.UnsetPlaying(player.Name!, false, UnsetPlayingReason.PlayerLeftMatch);
                         }
                         else if (boxState.Player2 == player)
                         {
@@ -283,7 +283,7 @@ namespace SS.Matchmaking.Modules
                             }
 
                             QueueMatchCompletionCheck(boxState.MatchIdentifier);
-                            _playManager.UnsetPlaying(player, false);
+                            _playManager.UnsetPlaying(player.Name!, false, UnsetPlayingReason.PlayerLeftMatch);
                         }
                     }
                 }
@@ -384,13 +384,13 @@ namespace SS.Matchmaking.Modules
                     {
                         boxState.Player1State = PlayerMatchmakingState.GaveUp;
                         QueueMatchCompletionCheck(boxState.MatchIdentifier);
-                        _playManager.UnsetPlaying(player, false);
+                        _playManager.UnsetPlaying(player.Name!, false, UnsetPlayingReason.PlayerLeftMatch);
                     }
                     else if (boxState.Player2 == player && boxState.Player2State == PlayerMatchmakingState.Playing)
                     {
                         boxState.Player2State = PlayerMatchmakingState.GaveUp;
                         QueueMatchCompletionCheck(boxState.MatchIdentifier);
-                        _playManager.UnsetPlaying(player, false);
+                        _playManager.UnsetPlaying(player.Name!, false, UnsetPlayingReason.PlayerLeftMatch);
                     }
                 }
                 else
@@ -851,7 +851,7 @@ namespace SS.Matchmaking.Modules
 
             void DoUnsetPlaying(Player player)
             {
-                _playManager.UnsetPlaying(player, true);
+                _playManager.UnsetPlaying(player.Name!, true, UnsetPlayingReason.PlayerLeftMatch);
             }
         }
 

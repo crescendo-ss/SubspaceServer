@@ -382,43 +382,46 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        void IPlayManager.UnsetPlayingDueToCancel(Player player)
+        void IPlayManager.UnsetPlaying(string playerName, bool allowRequeuing, UnsetPlayingReason reason, TimeSpan holdDuration)
         {
-            UnsetPlaying(player, true, true);
-        }
+            if (holdDuration < TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(holdDuration), holdDuration, "Cannot be negative.");
 
-        void IPlayManager.UnsetPlayingDueToCancel<T>(T players)
-        {
-            // First, unset all players (and their groups) to restore their previous queue positions.
-            // Then, fire the change events for the affected queues.
-            UnsetPlaying(players, true, true);
-        }
+            bool isDueToCancel = reason == UnsetPlayingReason.MatchCancelled;
 
-        void IPlayManager.UnsetPlaying(Player player, bool allowRequeue)
-        {
-            UnsetPlaying(player, allowRequeue, false);
-        }
+            if (holdDuration > TimeSpan.Zero)
+            {
+                // A hold is only applied if the player is actually in the 'Playing' state.
+                if (!_playersPlaying.Remove(playerName))
+                    return;
+            }
 
-        void IPlayManager.UnsetPlaying<T>(T players, bool allowRequeue)
-        {
-            UnsetPlaying(players, allowRequeue, false);
-        }
-
-        void IPlayManager.UnsetPlayingByName(string playerName, bool allowRequeue)
-        {
             Player? player = _playerData.FindPlayer(playerName);
             if (player is not null)
             {
-                UnsetPlaying(player, allowRequeue, false);
+                if (holdDuration > TimeSpan.Zero)
+                    AddPlayHold(player, holdDuration);
+
+                UnsetPlaying(player, allowRequeuing, isDueToCancel);
             }
             else
             {
-                _playersPlaying.Remove(playerName);
+                if (holdDuration > TimeSpan.Zero)
+                    SetPendingPlayHold(playerName, holdDuration);
+                else
+                    _playersPlaying.Remove(playerName);
             }
         }
 
-        void IPlayManager.UnsetPlayingByName<T>(T playerNames, bool allowAutoRequeue)
+        void IPlayManager.UnsetPlaying<T>(T playerNames, bool allowRequeuing, UnsetPlayingReason reason, TimeSpan holdDuration)
         {
+            if (playerNames is null)
+                return;
+
+            if (holdDuration < TimeSpan.Zero)
+                throw new ArgumentOutOfRangeException(nameof(holdDuration), holdDuration, "Cannot be negative.");
+
+            bool isDueToCancel = reason == UnsetPlayingReason.MatchCancelled;
             Player[] players = ArrayPool<Player>.Shared.Rent(playerNames.Count);
 
             try
@@ -427,18 +430,31 @@ namespace SS.Matchmaking.Modules
 
                 foreach (string playerName in playerNames)
                 {
+                    if (holdDuration > TimeSpan.Zero)
+                    {
+                        // A hold is only applied if the player is actually in the 'Playing' state.
+                        if (!_playersPlaying.Remove(playerName))
+                            continue;
+                    }
+
                     Player? player = _playerData.FindPlayer(playerName);
                     if (player is not null)
                     {
+                        if (holdDuration > TimeSpan.Zero)
+                            AddPlayHold(player, holdDuration);
+
                         players[index++] = player;
                     }
                     else
                     {
-                        _playersPlaying.Remove(playerName);
+                        if (holdDuration > TimeSpan.Zero)
+                            SetPendingPlayHold(playerName, holdDuration);
+                        else
+                            _playersPlaying.Remove(playerName);
                     }
                 }
 
-                UnsetPlaying(new ArraySegment<Player>(players, 0, index), allowAutoRequeue, false);
+                UnsetPlaying(new ArraySegment<Player>(players, 0, index), allowRequeuing, isDueToCancel);
             }
             finally
             {
@@ -446,41 +462,14 @@ namespace SS.Matchmaking.Modules
             }
         }
 
-        void IPlayManager.UnsetPlayingWithHold(string playerName, TimeSpan duration)
+        private void SetPendingPlayHold(string playerName, TimeSpan duration)
         {
-            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(duration, TimeSpan.Zero);
-
-            if (!_playersPlaying.Remove(playerName))
-                return;
-
-            Player? player = _playerData.FindPlayer(playerName);
-            if (player is not null)
+            // The player is not logged on.
+            // However, we still want to remember that the player should have a play hold if they reconnect.
+            if (!_pendingPlayHolds.TryGetValue(playerName, out TimeSpan existingDuration)
+                || existingDuration < duration)
             {
-                AddPlayHold(player, duration);
-                UnsetPlaying(player, false, false);
-            }
-            else
-            {
-                // The player is not logged on.
-                // However, we still want to remember that the player should have a play hold if they reconnect.
-                if (!_pendingPlayHolds.TryGetValue(playerName, out TimeSpan existingDuration)
-                    || existingDuration < duration)
-                {
-                    _pendingPlayHolds[playerName] = duration;
-                }
-            }
-        }
-
-        void IPlayManager.UnsetPlayingWithHold<T>(T playerNames, TimeSpan duration)
-        {
-            if (playerNames is null)
-                return;
-
-            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(duration, TimeSpan.Zero);
-
-            foreach (string playerName in playerNames)
-            {
-                ((IPlayManager)this).UnsetPlayingWithHold(playerName, duration);
+                _pendingPlayHolds[playerName] = duration;
             }
         }
 

@@ -5,7 +5,7 @@ namespace SS.Matchmaking.Interfaces
 {
     /// <summary>
     /// Interface that allows external modules to signal that a KO'd player was early-requeued into a new match,
-    /// so that the old match's end-of-match cleanup skips calling <c>UnsetPlayingByName</c> for them.
+    /// so that the old match's end-of-match cleanup skips calling <c>UnsetPlaying</c> for them.
     /// </summary>
     public interface IKoEarlyRequeue : IComponentInterface
     {

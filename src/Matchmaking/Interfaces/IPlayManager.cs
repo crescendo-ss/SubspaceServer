@@ -42,106 +42,47 @@ namespace SS.Matchmaking.Interfaces
 
         #endregion
 
-        #region UnsetPlaying* methods
-
-        /// <summary>
-        /// Removes the 'Playing' state of a player such that the player will automatically be requeued into any queue(s) 
-        /// they were previously searching on prior to getting set to 'Playing', and keep their previous position in each queue(s).
-        /// </summary>
-        /// <remarks>
-        /// This is useful for when the player was set to 'Playing', but the game was cancelled before it could start.
-        /// For example, if unable to start because another player they were matched up to play with/against disconnected before the game could start.
-        /// </remarks>
-        /// <param name="player">The player to change the state of.</param>
-        void UnsetPlayingDueToCancel(Player player);
-
-        /// <summary>
-        /// Removes the 'Playing' state of a set of players such that the players will automatically be requeued into any queue(s) 
-        /// they were previously searching on prior to getting set to 'Playing', and keep their previous position in each queue(s).
-        /// </summary>
-        /// <remarks>
-        /// This is useful for when players were set to 'Playing', but the game was cancelled before it could start.
-        /// For example, if unable to start because another player they were matched up to play with/against disconnected before the game could start.
-        /// </remarks>
-        /// <param name="players">The players to change the state of.</param>
-        void UnsetPlayingDueToCancel<T>(T players) where T : IReadOnlyCollection<Player>;
+        #region UnsetPlaying methods
 
         /// <summary>
         /// Removes the 'Playing' state of a player.
         /// </summary>
-        /// <param name="player">The player to unset from the 'Playing' state.</param>
-        /// <param name="allowRequeue">Whether to allow automatic re-queuing (search for another match).</param>
-        void UnsetPlaying(Player player, bool allowRequeue);
-
-        /// <summary>
-        /// Removes the 'Playing' state of players.
-        /// </summary>
         /// <remarks>
-        /// The players are processed in the order provided. So, those earlier in the collection will be queued before those that come later.
-        /// It is the job of the modules calling this to maintain the order of players, preferably keeping players that queued earlier to stay in front.
-        /// </remarks>
-        /// <param name="players">The players to unset from the 'Playing' state. The players are processed in the order provided.</param>
-        /// <param name="allowRequeue">Whether to allow automatic re-queuing (search for another match).</param>
-        void UnsetPlaying<T>(T players, bool allowRequeue) where T : IReadOnlyCollection<Player>;
-
-        /// <summary>
-        /// Removes the 'Playing' state of a player, by player name.
-        /// </summary>
-        /// <remarks>
-        /// This overload is for when holding onto <see cref="Player"/> objects is not possible.
-        /// For example, a module that holds players in the 'Playing' state until the match ends, even if a player disconnects.
+        /// <para>
+        /// When <paramref name="reason"/> is <see cref="UnsetPlayingReason.MatchCancelled"/>, the player is requeued into any queue(s)
+        /// they were searching on prior to being set to 'Playing', preserving their original position (timestamp) in each queue.
+        /// For all other reasons, automatic requeuing (when <paramref name="allowRequeuing"/> is <see langword="true"/>) honors the player's
+        /// auto-requeue preference and uses the current time, so the player goes to the back of each queue.
+        /// </para>
+        /// <para>
+        /// When <paramref name="holdDuration"/> is greater than <see cref="TimeSpan.Zero"/>, a play hold is applied (see
+        /// <see cref="AddPlayHold(string, TimeSpan)"/>). The hold persists across disconnects: an offline player's hold is recorded and
+        /// restored when they reconnect. While a hold is in effect, automatic requeuing is suppressed even if <paramref name="allowRequeuing"/> is <see langword="true"/>.
+        /// </para>
         /// </remarks>
         /// <param name="playerName">The name of the player to unset from the 'Playing' state.</param>
-        /// <param name="allowRequeue">Whether to allow automatic re-queuing (search for another match).</param>
-        void UnsetPlayingByName(string playerName, bool allowRequeue);
+        /// <param name="allowRequeuing">Whether to allow automatic re-queuing (search for another match).</param>
+        /// <param name="reason">Why the player is being unset. Affects whether prior queue position is restored.</param>
+        /// <param name="holdDuration">If greater than zero, applies a play hold for this duration. Default (<see cref="TimeSpan.Zero"/>) means no hold.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="holdDuration"/> cannot be negative.</exception>
+        void UnsetPlaying(string playerName, bool allowRequeuing, UnsetPlayingReason reason = UnsetPlayingReason.MatchFinished, TimeSpan holdDuration = default);
 
         /// <summary>
         /// Removes the 'Playing' state of a set of players, by player name.
         /// </summary>
         /// <remarks>
-        /// This overload is for when holding onto <see cref="Player"/> objects is not possible.
-        /// For example, a module that holds players in the 'Playing' state until the match ends, even if a player disconnects.
-        /// </remarks>
-        /// <typeparam name="T">A collection of player names.</typeparam>
-        /// <param name="playerNames">The names of players to unset from the 'Playing' state.</param>
-        /// <param name="allowAutoRequeue">Whether to allow automatic re-queuing (search for another match).</param>
-        void UnsetPlayingByName<T>(T playerNames, bool allowAutoRequeue) where T : IReadOnlyCollection<string>;
-
-        /// <summary>
-        /// Removes the 'Playing' state from a player and penalizes the player by placing a hold that prevents joining another match for a specified <paramref name="duration"/>.
-        /// </summary>
-        /// <remarks>
-        /// This can be useful for penalizing a player for:
-        /// <list type="bullet">
-        ///     <item>not readying up or disconnecting before a match starts</item>
-        ///     <item>
-        ///         leaving a match without being subbed, preferably called when the match ends so that the <paramref name="duration"/> is relative to the match ending time.
-        ///     </item>
-        /// </list>
+        /// <inheritdoc cref="UnsetPlaying(string, bool, UnsetPlayingReason, TimeSpan)" path="/remarks"/>
         /// <para>
-        /// A hold persists even if the player disconnects and reconnects.
-        /// For example, if a player has 1 minute remaining and disconnects, 
-        /// the remaining duration will be restored when the player reconnects.
-        /// This should help dissuade players from switching names to avoid penalties.
+        /// Players are processed in the order provided. Callers should preserve original ordering so that players who queued earlier stay in front.
         /// </para>
         /// </remarks>
-        /// <param name="playerName">The name of the player to affect.</param>
-        /// <param name="duration">How long to place a hold for.</param>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="duration"/> must be greater than 0.</exception>
-        void UnsetPlayingWithHold(string playerName, TimeSpan duration);
-
-        /// <summary>
-        /// Removes the 'Playing' state from a set of players and penalizes them with holds that prevent them from joining another match for a specified <paramref name="duration"/>
-        /// </summary>
-        /// <remarks>
-        /// <inheritdoc cref="UnsetPlayingWithHold(string, TimeSpan)" path="/remarks"/>
-        /// <para>This method is generic to prevent boxing of the collection enumerator.</para>
-        /// </remarks>
         /// <typeparam name="T">A collection of player names.</typeparam>
-        /// <param name="playerNames">The names of the players to affect.</param>
-        /// <param name="duration">How long to place a hold for.</param>
-        /// <exception cref="ArgumentOutOfRangeException"><paramref name="duration"/> must be greater than 0.</exception>
-        void UnsetPlayingWithHold<T>(T playerNames, TimeSpan duration) where T : IReadOnlyCollection<string>;
+        /// <param name="playerNames">The names of players to unset from the 'Playing' state. Processed in order.</param>
+        /// <param name="allowRequeuing">Whether to allow automatic re-queuing (search for another match).</param>
+        /// <param name="reason">Why the players are being unset. Affects whether prior queue position is restored.</param>
+        /// <param name="holdDuration">If greater than zero, applies a play hold of this duration to each player. Default (<see cref="TimeSpan.Zero"/>) means no hold.</param>
+        /// <exception cref="ArgumentOutOfRangeException"><paramref name="holdDuration"/> cannot be negative.</exception>
+        void UnsetPlaying<T>(T playerNames, bool allowRequeuing, UnsetPlayingReason reason = UnsetPlayingReason.MatchFinished, TimeSpan holdDuration = default) where T : IReadOnlyCollection<string>;
 
         #endregion
 

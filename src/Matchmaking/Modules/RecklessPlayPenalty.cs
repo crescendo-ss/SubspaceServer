@@ -208,8 +208,7 @@ namespace SS.Matchmaking.Modules
 
             foreach ((string playerName, (TimeSpan penalty, TimeSpan elapsedAtKo)) in matchPenalties)
             {
-                // Apply the hold. Safe even if the player was already removed from the Playing state
-                // by another mechanism — UnsetPlayingWithHold early-returns when the name is not found.
+                // Apply the hold. Safe even if the player was already removed from the Playing state by another mechanism.
                 _playManager.AddPlayHold(playerName, penalty);
 
                 Player? player = _playerData.FindPlayer(playerName);

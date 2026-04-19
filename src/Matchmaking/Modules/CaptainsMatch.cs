@@ -2158,9 +2158,9 @@ namespace SS.Matchmaking.Modules
             if (_playManager is not null)
             {
                 if (slot.LeftArena)
-                    _playManager.UnsetPlayingByName(oldName, false);
+                    _playManager.UnsetPlaying(oldName, false, UnsetPlayingReason.ReplacedBySub);
                 else
-                    _playManager.UnsetPlaying(oldPlayer, false);
+                    _playManager.UnsetPlaying(oldPlayer.Name!, false, UnsetPlayingReason.ReplacedBySub);
             }
 
             // Update the slot for the sub.
@@ -2499,14 +2499,14 @@ namespace SS.Matchmaking.Modules
                 return;
 
             foreach (var (p, slot) in match.ActiveSlots)
-                _playManager.UnsetPlaying(p, false);
+                _playManager.UnsetPlaying(p.Name!, false);
 
             foreach (var (p, slot) in match.SpecOutSlots)
             {
                 if (slot.LeftArena)
-                    _playManager.UnsetPlayingByName(slot.PlayerName!, false);
+                    _playManager.UnsetPlaying(slot.PlayerName!, false, UnsetPlayingReason.ReplacedBySub);
                 else
-                    _playManager.UnsetPlaying(p, false);
+                    _playManager.UnsetPlaying(p.Name!, false, UnsetPlayingReason.ReplacedBySub);
             }
         }
 

@@ -2692,7 +2692,7 @@ namespace SS.Matchmaking.Modules
 
             // Remove the 'playing' state which requeues the player back into the queues.
             // In this scenario, the player should get added back into their original queue positions rather than at the end of the queues.
-            _playManager.UnsetPlaying(player, true);
+            _playManager.UnsetPlaying(player.Name!, true, UnsetPlayingReason.ReplacedBySub);
         }
 
         [CommandHelp(
@@ -4957,10 +4957,10 @@ namespace SS.Matchmaking.Modules
                             EndMatch(matchData, MatchEndReason.Cancelled, null);
 
                             // Unset players that were found such that they get added back to the queues in their original positions.
-                            _playManager.UnsetPlayingDueToCancel(playersByName.Values);
+                            _playManager.UnsetPlaying(playersByName.Keys, true, UnsetPlayingReason.MatchCancelled);
 
                             // For the players that disconnected, penalize with a delay.
-                            _playManager.UnsetPlayingWithHold(abandonedPlayerNames, _abandonStartPenaltyDuration);
+                            _playManager.UnsetPlaying(abandonedPlayerNames, false, UnsetPlayingReason.Disconnected, _abandonStartPenaltyDuration);
 
                             return;
                         }
@@ -5655,10 +5655,21 @@ namespace SS.Matchmaking.Modules
 
                         // Players that did not abandon the match are placed back into their queues and keep their original position in the queues.
                         readyPlayers.UnionWith(waitingPlayers);
-                        _playManager.UnsetPlayingDueToCancel(readyPlayers);
+                        HashSet<string> readyPlayerNames = _objectPoolManager.NameHashSetPool.Get();
+                        try
+                        {
+                            foreach (Player p in readyPlayers)
+                                readyPlayerNames.Add(p.Name!);
+
+                            _playManager.UnsetPlaying(readyPlayerNames, true, UnsetPlayingReason.MatchCancelled);
+                        }
+                        finally
+                        {
+                            _objectPoolManager.NameHashSetPool.Return(readyPlayerNames);
+                        }
 
                         // Players that abandoned the match are penalized with a delay.
-                        _playManager.UnsetPlayingWithHold(abandonedPlayerNames, _abandonStartPenaltyDuration);
+                        _playManager.UnsetPlaying(abandonedPlayerNames, false, UnsetPlayingReason.Disconnected, _abandonStartPenaltyDuration);
                         return;
                     }
 
@@ -5671,6 +5682,7 @@ namespace SS.Matchmaking.Modules
                             // Send chat notifications.
                             HashSet<Player> notifyPlayers = _objectPoolManager.PlayerSetPool.Get();
                             HashSet<string> waitingPlayerNames = _objectPoolManager.NameHashSetPool.Get();
+                            HashSet<string> readyPlayerNames = _objectPoolManager.NameHashSetPool.Get();
                             try
                             {
                                 notifyPlayers.UnionWith(readyPlayers);
@@ -5681,22 +5693,28 @@ namespace SS.Matchmaking.Modules
                                     waitingPlayerNames.Add(player.Name!);
                                 }
 
+                                foreach (Player player in readyPlayers)
+                                {
+                                    readyPlayerNames.Add(player.Name!);
+                                }
+
                                 SendMatchCancellationNotification(notifyPlayers, waitingPlayerNames, null, "took too long to arrive");
+
+                                EndMatch(matchData, MatchEndReason.Cancelled, null);
+
+                                // Players that were ready are placed back into their queues and keep their original position in the queues.
+                                _playManager.UnsetPlaying(readyPlayerNames, true, UnsetPlayingReason.MatchCancelled);
+
+                                // Players that we were still waiting on took too long to arrive (downloading the map and lvz files).
+                                // They are NOT placed back into the queue, but they are allowed to manually requeue.
+                                _playManager.UnsetPlaying(waitingPlayerNames, false, UnsetPlayingReason.NotReadiedUp);
                             }
                             finally
                             {
                                 _objectPoolManager.PlayerSetPool.Return(notifyPlayers);
                                 _objectPoolManager.NameHashSetPool.Return(waitingPlayerNames);
+                                _objectPoolManager.NameHashSetPool.Return(readyPlayerNames);
                             }
-
-                            EndMatch(matchData, MatchEndReason.Cancelled, null);
-
-                            // Players that were ready are placed back into their queues and keep their original position in the queues.
-                            _playManager.UnsetPlayingDueToCancel(readyPlayers);
-
-                            // Players that we were still waiting on took too long to arrive (downloading the map and lvz files).
-                            // They are NOT placed back into the queue, but they are allowed to manually requeue.
-                            _playManager.UnsetPlaying(waitingPlayers, false);
 
                             return;
                         }
@@ -5836,10 +5854,21 @@ namespace SS.Matchmaking.Modules
 
                         // Players that did not abandon the match are placed back into their queues and keep their original position in the queues.
                         readyPlayers.UnionWith(waitingPlayers);
-                        _playManager.UnsetPlayingDueToCancel(readyPlayers);
+                        HashSet<string> readyPlayerNames = _objectPoolManager.NameHashSetPool.Get();
+                        try
+                        {
+                            foreach (Player p in readyPlayers)
+                                readyPlayerNames.Add(p.Name!);
+
+                            _playManager.UnsetPlaying(readyPlayerNames, true, UnsetPlayingReason.MatchCancelled);
+                        }
+                        finally
+                        {
+                            _objectPoolManager.NameHashSetPool.Return(readyPlayerNames);
+                        }
 
                         // Players that abandoned the match are penalized with a delay.
-                        _playManager.UnsetPlayingWithHold(abandonedPlayerNames, _abandonStartPenaltyDuration);
+                        _playManager.UnsetPlaying(abandonedPlayerNames, false, UnsetPlayingReason.Disconnected, _abandonStartPenaltyDuration);
 
                         return;
                     }
@@ -5853,6 +5882,7 @@ namespace SS.Matchmaking.Modules
                             // Send chat notifications.
                             HashSet<Player> notifyPlayers = _objectPoolManager.PlayerSetPool.Get();
                             HashSet<string> waitingPlayerNames = _objectPoolManager.NameHashSetPool.Get();
+                            HashSet<string> readyPlayerNames = _objectPoolManager.NameHashSetPool.Get();
                             try
                             {
                                 notifyPlayers.UnionWith(readyPlayers);
@@ -5863,6 +5893,11 @@ namespace SS.Matchmaking.Modules
                                     waitingPlayerNames.Add(player.Name!);
                                 }
 
+                                foreach (Player player in readyPlayers)
+                                {
+                                    readyPlayerNames.Add(player.Name!);
+                                }
+
                                 SendMatchCancellationNotification(notifyPlayers, waitingPlayerNames, waitingPlayers, "did not ready up");
 
                                 // Additionally, send all players to spec.
@@ -5870,26 +5905,27 @@ namespace SS.Matchmaking.Modules
                                 {
                                     _game.SetShipAndFreq(player, ShipType.Spec, matchData.Arena!.SpecFreq);
                                 }
+
+                                EndMatch(matchData, MatchEndReason.Cancelled, null);
+
+                                // Players that were ready are placed back into their queues and keep their original position in the queues.
+                                _playManager.UnsetPlaying(readyPlayerNames, true, UnsetPlayingReason.MatchCancelled);
+
+                                // Players that we were still waiting for took too long to ready up.
+                                // They are penalized with a delay to discourage from attempting to cherry pick their matches (didn't like their teammates) or trolling.
+                                foreach (Player player in waitingPlayers)
+                                {
+                                    abandonedPlayerNames.Add(player.Name!);
+                                }
+
+                                _playManager.UnsetPlaying(abandonedPlayerNames, false, UnsetPlayingReason.NotReadiedUp, _notReadyStartPenaltyDuration);
                             }
                             finally
                             {
                                 _objectPoolManager.PlayerSetPool.Return(notifyPlayers);
                                 _objectPoolManager.NameHashSetPool.Return(waitingPlayerNames);
+                                _objectPoolManager.NameHashSetPool.Return(readyPlayerNames);
                             }
-
-                            EndMatch(matchData, MatchEndReason.Cancelled, null);
-
-                            // Players that were ready are placed back into their queues and keep their original position in the queues.
-                            _playManager.UnsetPlayingDueToCancel(readyPlayers);
-
-                            // Players that we were still waiting for took too long to ready up.
-                            // They are penalized with a delay to discourage from attempting to cherry pick their matches (didn't like their teammates) or trolling.
-                            foreach (Player player in waitingPlayers)
-                            {
-                                abandonedPlayerNames.Add(player.Name!);
-                            }
-
-                            _playManager.UnsetPlayingWithHold(abandonedPlayerNames, _notReadyStartPenaltyDuration);
 
                             return;
                         }
@@ -6031,10 +6067,21 @@ namespace SS.Matchmaking.Modules
                             EndMatch(matchData, MatchEndReason.Cancelled, null);
 
                             // Players that did not abandon the match are placed back into their queues and keep their original position in the queues.
-                            _playManager.UnsetPlayingDueToCancel(players);
+                            HashSet<string> playerNames = _objectPoolManager.NameHashSetPool.Get();
+                            try
+                            {
+                                foreach (Player p in players)
+                                    playerNames.Add(p.Name!);
+
+                                _playManager.UnsetPlaying(playerNames, true, UnsetPlayingReason.MatchCancelled);
+                            }
+                            finally
+                            {
+                                _objectPoolManager.NameHashSetPool.Return(playerNames);
+                            }
 
                             // Players that abandoned the match are penalized with a delay.
-                            _playManager.UnsetPlayingWithHold(abandonedPlayerNames, _abandonStartPenaltyDuration);
+                            _playManager.UnsetPlaying(abandonedPlayerNames, false, UnsetPlayingReason.Disconnected, _abandonStartPenaltyDuration);
 
                             return;
                         }
@@ -6743,7 +6790,7 @@ namespace SS.Matchmaking.Modules
 
                     if (playerNameIndex > 0)
                     {
-                        _playManager.UnsetPlayingByName(new ArraySegment<string>(playerNames, 0, playerNameIndex), true);
+                        _playManager.UnsetPlaying(new ArraySegment<string>(playerNames, 0, playerNameIndex), true);
                         playerNameIndex = 0;
                     }
 
@@ -6758,7 +6805,7 @@ namespace SS.Matchmaking.Modules
 
                     if (playerNameIndex > 0)
                     {
-                        _playManager.UnsetPlayingByName(new ArraySegment<string>(playerNames, 0, playerNameIndex), false);
+                        _playManager.UnsetPlaying(new ArraySegment<string>(playerNames, 0, playerNameIndex), false);
                     }
                 }
                 finally
