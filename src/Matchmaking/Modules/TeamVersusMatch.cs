@@ -4633,25 +4633,12 @@ namespace SS.Matchmaking.Modules
             matchData.StartCountdown = (int)matchData.Configuration.StartCountdownDuration.TotalSeconds;
             SetProcessMatchStateTimer(matchData);
 
-            // Record replay if configured
-            if (_replayController is not null && !string.IsNullOrWhiteSpace(matchData.Configuration.ReplayRecordPath))
-            {
-                arenaData.ReplayRecordingFilePath = Path.Join(matchData.Configuration.ReplayRecordPath, $"{leagueGame.LeagueId}/{leagueGame.SeasonId}/{DateTime.UtcNow:yyyyMMdd-HHmmss} {leagueGame.SeasonGameId}.replay");
-
-                if (!_replayController.StartRecording(
-                    arena,
-                    arenaData.ReplayRecordingFilePath,
-                    $"League: {leagueGame.LeagueName}, Season: {leagueGame.SeasonName}, SeasonGameId: {leagueGame.SeasonGameId}"))
-                {
-                    _logManager.LogA(LogLevel.Warn, nameof(TeamVersusMatch), arena, $"Failed to start recording of league match. (SeasonGameId: {leagueGame.SeasonGameId}, FilePath: {arenaData.ReplayRecordingFilePath})");
-                    arenaData.ReplayRecordingFilePath = null;
-                }
-
-                // TODO: Wait for the recording to actually begin? Would need some mechanism added to the replay module to detect it.
-                // Perhaps use callbacks? There's also the possiblity it fails to begin recording (bad filename, out of disk space, etc..)
-                // For now, not dealing with it and assuming if recording starts, it most likely will happen by the time the GO! occurs.
-                // The following arena notifications unfortunately will very likely not make it into the recording.
-            }
+            // Record replay if configured.
+            // TODO: Wait for the recording to actually begin? Would need some mechanism added to the replay module to detect it.
+            // Perhaps use callbacks? There's also the possiblity it fails to begin recording (bad filename, out of disk space, etc..)
+            // For now, not dealing with it and assuming if recording starts, it most likely will happen by the time the GO! occurs.
+            // The following arena notifications unfortunately will very likely not make it into the recording.
+            StartRecordingReplay(arena, arenaData, matchData);
 
             // Send arena notifications.
             if (matchData.IsForcedStart)
@@ -4730,6 +4717,38 @@ namespace SS.Matchmaking.Modules
                 StopRecordingReplay(arena, arenaData);
 
                 // TODO: Unfortunately, we can't delete the recording, because the task recording it may not have ended yet.
+            }
+        }
+
+        private void StartRecordingReplay(Arena arena, ArenaData arenaData, MatchData matchData)
+        {
+            if (_replayController is null)
+                return;
+
+            string? replayRecordPath = matchData.Configuration.ReplayRecordPath;
+            if (string.IsNullOrWhiteSpace(replayRecordPath))
+                return;
+
+            int boxIdx = matchData.MatchIdentifier.BoxIdx;
+            string boxSuffix = boxIdx > 0 ? $"-box{boxIdx}" : "";
+            string fileName = $"{DateTime.UtcNow:yyyyMMdd-HHmmss}{boxSuffix}-match.replay";
+            arenaData.ReplayRecordingFilePath = Path.Join(replayRecordPath, matchData.ArenaName, fileName);
+
+            string comments;
+            LeagueGameInfo? leagueGame = matchData.LeagueGame;
+            if (leagueGame is not null)
+            {
+                comments = $"MatchType: {matchData.MatchIdentifier.MatchType}, BoxIdx: {boxIdx}, League: {leagueGame.LeagueName}, Season: {leagueGame.SeasonName}, SeasonGameId: {leagueGame.SeasonGameId}";
+            }
+            else
+            {
+                comments = $"MatchType: {matchData.MatchIdentifier.MatchType}, BoxIdx: {boxIdx}";
+            }
+
+            if (!_replayController.StartRecording(arena, arenaData.ReplayRecordingFilePath, comments))
+            {
+                _logManager.LogA(LogLevel.Warn, nameof(TeamVersusMatch), arena, $"Failed to start recording of match. (FilePath: {arenaData.ReplayRecordingFilePath})");
+                arenaData.ReplayRecordingFilePath = null;
             }
         }
 
@@ -5891,6 +5910,12 @@ namespace SS.Matchmaking.Modules
                     matchData.Status = MatchStatus.StartingCountdown;
                     matchData.PhaseExpiration = null;
                     matchData.StartCountdown = (int)matchData.Configuration.StartCountdownDuration.TotalSeconds;
+
+                    // Record replay if configured.
+                    if (matchData.Arena is not null && _arenaDataDictionary.TryGetValue(matchData.Arena, out ArenaData? arenaData))
+                    {
+                        StartRecordingReplay(matchData.Arena, arenaData, matchData);
+                    }
 
                     SendMatchStartingNotification(matchData);
                 }
